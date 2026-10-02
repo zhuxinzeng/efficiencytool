@@ -1,0 +1,31 @@
+{
+  "name": "efficiencytool",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "效率工具箱：Chrome MV3 扩展，企业信息/JSON/接口录制/框架状态等前端联调工具",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "verify": "tsx scripts/verify.mts",
+    "icons": "node scripts/gen-icons.mjs"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^5.4.0",
+    "antd": "^5.21.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.0.0-beta.23",
+    "@types/chrome": "^0.3.4",
+    "@types/node": "^26.6.3",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "sharp": "^0.33.5",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.3"
+  }
+}
