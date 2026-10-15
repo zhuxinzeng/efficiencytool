@@ -2,7 +2,7 @@
 import type { ComponentType, ReactNode } from 'react';
 import {
   BankOutlined, ClockCircleOutlined, CodeOutlined, ClusterOutlined, DatabaseOutlined,
-  GlobalOutlined, LinkOutlined,
+  DashboardOutlined, GlobalOutlined, LinkOutlined,
 } from '@ant-design/icons';
 import { CompanyTool } from '../tools/company/CompanyTool';
 import { UrlTool } from '../tools/url/UrlTool';
@@ -11,6 +11,7 @@ import { JsonTool } from '../tools/json/JsonTool';
 import { CorsTool } from '../tools/cors/CorsTool';
 import { NetRecordTool } from '../tools/netrecord/NetRecordTool';
 import { FrameStoreTool } from '../tools/framestore/FrameStoreTool';
+import { PerfTool } from '../tools/perf/PerfTool';
 
 export interface ToolMeta {
   id: string;
@@ -46,6 +47,7 @@ export const TOOL_GROUPS: ToolGroup[] = [
     id: 'network',
     title: '网络工具',
     tools: [
+      { id: 'perf', title: '性能分析', subtitle: '当前页 CWV / 资源 / 优化建议', icon: <DashboardOutlined />, component: PerfTool, wide: true },
       { id: 'cors', title: 'CORS 绕过', subtitle: '一键注入跨域响应头', icon: <GlobalOutlined />, component: CorsTool },
       { id: 'netrecord', title: '接口录制', subtitle: '保存当前 Tab 请求与响应', icon: <DatabaseOutlined />, component: NetRecordTool, wide: true },
       { id: 'framestore', title: '框架状态', subtitle: 'Pinia / Vuex / Redux 探测编辑', icon: <ClusterOutlined />, component: FrameStoreTool, wide: true },

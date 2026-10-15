@@ -40,11 +40,15 @@ export function JsonTool() {
 
       <Space direction="vertical" style={{ width: '100%' }} size={12}>
         <Input.TextArea
+          className="json-input"
           placeholder='粘贴 JSON 文本，如 {"name":"测试","list":[1,2,3]}'
           value={input}
           onChange={(e) => handleChange(e.target.value)}
-          autoSize={{ minRows: 4, maxRows: 10 }}
+          rows={14}
           allowClear
+          // rc-textarea：resize 必须挂在 style 上才会传到内部 textarea；勿用 autoSize（会强制 resize:none）
+          style={{ resize: 'vertical', minHeight: 280 }}
+          styles={{ textarea: { minHeight: 280, resize: 'vertical' } }}
         />
 
         <Space wrap>

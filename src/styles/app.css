@@ -98,6 +98,14 @@ body.sidepanel-body #root {
   box-shadow: 0 6px 18px rgba(22, 119, 255, 0.12);
 }
 
+/* JSON 工具输入：默认可拉高，右下角可纵向拉伸（覆盖 antd 可能的 resize:none） */
+.json-input textarea,
+.json-input.ant-input,
+textarea.json-input {
+  resize: vertical !important;
+  min-height: 280px !important;
+}
+
 /* 结果输出区：等宽字体、保留换行、可滚动 */
 .result-pre {
   margin: 0;
