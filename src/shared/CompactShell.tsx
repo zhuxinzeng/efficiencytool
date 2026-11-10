@@ -8,6 +8,9 @@ import { openResizableWindow, openSidePanel } from './open-full';
 
 const { Title, Text } = Typography;
 
+/** 常驻首页的工具：不作为卡片入口，直接在首页下方展示完整功能 */
+const INLINE_TOOL_IDS = ['url'];
+
 const headerStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
@@ -124,16 +127,33 @@ export function CompactShell({
           />
         </header>
         <main className="popup-body">
-          {TOOL_GROUPS.map((group) => (
-            <section key={group.id}>
-              <div className="tool-group-title">{group.title}</div>
-              <div className="tool-grid">
-                {group.tools.map((t) => (
-                  <ToolCard key={t.id} tool={t} onOpen={() => openTool(t.id)} />
-                ))}
-              </div>
-            </section>
-          ))}
+          {INLINE_TOOL_IDS.map((id) => {
+            const inline = ALL_TOOLS.find((t) => t.id === id);
+            if (!inline) return null;
+            const InlineComponent = inline.component;
+            return (
+              <section key={id}>
+                <div className="tool-group-title">{inline.title}</div>
+                <Card size="small" styles={{ body: { padding: 12 } }}>
+                  <InlineComponent />
+                </Card>
+              </section>
+            );
+          })}
+          {TOOL_GROUPS.map((group) => {
+            const tools = group.tools.filter((t) => !INLINE_TOOL_IDS.includes(t.id));
+            if (!tools.length) return null;
+            return (
+              <section key={group.id}>
+                <div className="tool-group-title">{group.title}</div>
+                <div className="tool-grid">
+                  {tools.map((t) => (
+                    <ToolCard key={t.id} tool={t} onOpen={() => openTool(t.id)} />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
           <Text type="secondary" style={{ display: 'block', marginTop: 12, fontSize: 12, textAlign: 'center' }}>
             {variant === 'sidepanel'
               ? '侧边栏独立于页面：跨域名跳转仍可继续录制；无左侧菜单，点右上角打开全屏后显示左侧菜单'

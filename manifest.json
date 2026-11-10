@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "效率工具箱",
-  "version": "1.5.0",
-  "description": "企业信息生成、URL 编解码、时间戳转换、JSON；网络调试：性能分析、CORS、接口录制、框架状态",
+  "version": "1.7.0",
+  "description": "URL 编解码、编码全家桶、Mock 数据、企业信息、时间戳、JSON；网络调试：性能分析、CORS、接口录制、框架状态；设计与文件：取色配色、字体颜色审计、文件转 Markdown",
   "permissions": [
     "declarativeNetRequest",
     "storage",
     "debugger",
+    "webRequest",
     "sidePanel",
     "scripting"
   ],
@@ -26,26 +27,46 @@
   },
   "content_scripts": [
     {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["src/content/store-probe-page.ts"],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "src/content/store-probe-page.ts"
+      ],
       "run_at": "document_idle",
       "world": "MAIN"
     },
     {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["src/content/perf-probe-page.ts"],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "src/content/perf-probe-page.ts"
+      ],
       "run_at": "document_idle",
       "world": "MAIN"
     },
     {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["src/content/store-bridge.ts"],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "src/content/store-bridge.ts"
+      ],
       "run_at": "document_idle",
       "world": "ISOLATED"
     },
     {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["src/content/perf-bridge.ts"],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "src/content/perf-bridge.ts"
+      ],
       "run_at": "document_idle",
       "world": "ISOLATED"
     }

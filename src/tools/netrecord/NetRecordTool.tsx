@@ -2,14 +2,14 @@
 // 布局：列表仅展示方法/状态/接口，点击行弹窗查看完整详情
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import {
-  Alert, App, Badge, Button, Empty, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography,
+  Alert, App, Badge, Button, Empty, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tag, Typography,
 } from 'antd';
 import {
   ClearOutlined, CopyOutlined, DownloadOutlined, PlayCircleOutlined, StopOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
-  getDebuggerState, recClear, recList, recStart, recStop, subscribeDebuggerPush,
+  getDebuggerState, recClear, recList, recStart, recStop, setWebRequestMonitoring, subscribeDebuggerPush,
 } from '../../shared/debugger-client';
 import {
   REC_ENTRY_LIMIT, type DebuggerState, type RecordingEntry,
@@ -56,6 +56,7 @@ export function NetRecordTool() {
   const [keyword, setKeyword] = useState('');
   const [method, setMethod] = useState<string>('all');
   const [pageFilter, setPageFilter] = useState<string>('all');
+  const [tabFilter, setTabFilter] = useState<number | 'all'>('all');
   const [kindFilter, setKindFilter] = useState<string>('all');
   const [starting, setStarting] = useState(false);
   const [detail, setDetail] = useState<RecordingEntry | null>(null);
@@ -72,13 +73,15 @@ export function NetRecordTool() {
         setEntries((prev) => {
           const ids = new Set(push.entries.map((e) => e.id));
           const merged = [...push.entries, ...prev.filter((e) => !ids.has(e.id))];
-          return merged.slice(0, REC_ENTRY_LIMIT);
+          return merged.sort((a, b) => b.ts - a.ts).slice(0, REC_ENTRY_LIMIT);
         });
       }
     });
   }, []);
 
   const recording = !!state?.recording;
+  const webReqOn = !!state?.webRequestMonitoring;
+  const webReqSupported = !!state?.webRequestSupported;
 
   const pageOptions = useMemo(() => {
     const pages = new Map<string, number>();
@@ -95,11 +98,34 @@ export function NetRecordTool() {
     ];
   }, [entries]);
 
+  const tabOptions = useMemo(() => {
+    const map = new Map<number, { count: number; pageUrl: string }>();
+    for (const e of entries) {
+      if (e.tabId == null) continue;
+      const item = map.get(e.tabId) ?? { count: 0, pageUrl: e.pageUrl };
+      item.count += 1;
+      if (!item.pageUrl && e.pageUrl) item.pageUrl = e.pageUrl;
+      map.set(e.tabId, item);
+    }
+    return [
+      { label: `全部 Tab（${entries.length}）`, value: 'all' as const },
+      ...[...map.entries()].map(([id, v]) => ({
+        label: `Tab #${id}${v.pageUrl ? ` · ${shortPath(v.pageUrl)}` : ''}（${v.count}）`,
+        value: id,
+      })),
+    ];
+  }, [entries]);
+
+  useEffect(() => {
+    if (tabFilter !== 'all' && !tabOptions.some((o) => o.value === tabFilter)) setTabFilter('all');
+  }, [tabFilter, tabOptions]);
+
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
     return entries.filter((e) => {
       if (method !== 'all' && e.method !== method) return false;
       if (pageFilter !== 'all' && e.pageUrl !== pageFilter) return false;
+      if (tabFilter !== 'all' && e.tabId !== tabFilter) return false;
       if (kindFilter === 'api' && e.resourceType === 'Document') return false;
       if (kindFilter === 'doc' && e.resourceType !== 'Document') return false;
       if (kindFilter === 'redirect' && !(e.status >= 300 && e.status < 400)) return false;
@@ -111,7 +137,7 @@ export function NetRecordTool() {
         || e.responseBody.toLowerCase().includes(kw)
       );
     });
-  }, [entries, keyword, method, pageFilter, kindFilter]);
+  }, [entries, keyword, method, pageFilter, tabFilter, kindFilter]);
 
   const start = async () => {
     setStarting(true);
@@ -120,7 +146,7 @@ export function NetRecordTool() {
       if (!resp.ok) message.error(resp.error || '开启失败');
       else {
         if (resp.state) setState(resp.state);
-        message.success('已开始录制当前标签页（跳转后记录仍保留）');
+        message.success(webReqOn ? '已开始录制；全局监听的最近 10 秒缓冲已并入' : '已开始录制当前标签页（跳转后记录仍保留）');
       }
     } finally {
       setStarting(false);
@@ -138,10 +164,17 @@ export function NetRecordTool() {
     if (!resp.ok) message.error(resp.error || '清空失败');
     else {
       setEntries([]);
+      setTabFilter('all');
       if (resp.state) setState(resp.state);
       setDetail(null);
       message.success('已清空录制记录');
     }
+  };
+
+  const toggleWebReq = async (on: boolean) => {
+    const resp = await setWebRequestMonitoring(on);
+    if (!resp.ok) message.error(resp.error || '切换全局监听失败');
+    else if (resp.state) setState(resp.state);
   };
 
   const exportJson = () => {
@@ -191,6 +224,20 @@ export function NetRecordTool() {
       ),
     },
     {
+      title: '来源',
+      dataIndex: 'source',
+      width: 118,
+      render: (_: unknown, r) => (
+        <Space size={4} wrap>
+          <Tag color={r.source === 'webRequest' ? 'geekblue' : 'default'}>
+            {r.source === 'webRequest' ? '全局' : '单Tab'}
+          </Tag>
+          {r.tabId != null ? <Text type="secondary" style={{ fontSize: 11 }}>#{r.tabId}</Text> : null}
+          {r.prebuffer ? <Tag>预录</Tag> : null}
+        </Space>
+      ),
+    },
+    {
       title: '接口',
       dataIndex: 'url',
       ellipsis: true,
@@ -216,8 +263,8 @@ export function NetRecordTool() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, gap: 12 }}>
       <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-        录制当前标签页的 XHR / Fetch / Document（含页面 301/302 跳转链）。跨站后记录仍保留。
-        筛选可切「仅重定向」查看 3xx；点击一行看 Location 与完整详情。
+        录制当前标签页的 XHR / Fetch / Document（含页面 301/302 跳转链）；「全局」用 webRequest 监听跨 Tab 与新开 Tab 的初始化请求（路径、参数、状态，无响应体；保留最近 10 秒缓冲）。
+        跨站后记录仍保留，筛选可切「仅重定向」查看 3xx。
       </Paragraph>
 
       <Alert
@@ -225,8 +272,8 @@ export function NetRecordTool() {
         showIcon
         message={
           recording
-            ? `录制中：标签页 #${state?.tabId ?? '-'}，已保存 ${entries.length} 条（上限 ${REC_ENTRY_LIMIT}，单条 body 超 64KB 会截断）`
-            : `未开启：点击「开始录制」附加到当前活动标签页。已有历史 ${entries.length} 条，停止后仍可查看 / 导出`
+            ? `录制中：标签页 #${state?.tabId ?? '-'}，已保存 ${entries.length} 条（上限 ${REC_ENTRY_LIMIT}，单条 body 超 64KB 会截断）；全局监听${webReqOn ? '已开启' : '已关闭'}`
+            : `未开启：点击「开始录制」附加到当前活动标签页。已有历史 ${entries.length} 条，停止后仍可查看 / 导出；全局监听${webReqOn ? '已开启（保留最近 10 秒，开始录制时并入）' : '已关闭'}`
         }
       />
 
@@ -241,6 +288,18 @@ export function NetRecordTool() {
           </Button>
         )}
         <Badge status={recording ? 'processing' : 'default'} text={recording ? '实时写入中' : '已停止'} />
+        <Space size={6}>
+          <Text type="secondary" style={{ fontSize: 12 }}>全局监听</Text>
+          <Switch
+            size="small"
+            checked={webReqOn}
+            disabled={!state || !webReqSupported}
+            onChange={(on) => void toggleWebReq(on)}
+          />
+          <Text type="secondary" style={{ fontSize: 11 }}>
+            {webReqSupported ? '跨 Tab · 无响应体' : '当前环境不支持'}
+          </Text>
+        </Space>
         <Popconfirm title="清空全部录制记录？" onConfirm={() => void clear()}>
           <Button icon={<ClearOutlined />} disabled={entries.length === 0}>清空</Button>
         </Popconfirm>
@@ -284,7 +343,20 @@ export function NetRecordTool() {
           options={pageOptions}
           popupMatchSelectWidth={false}
         />
+        {tabOptions.length > 1 ? (
+          <Select
+            style={{ minWidth: 160, flex: '1 1 200px', maxWidth: 380 }}
+            value={tabFilter}
+            onChange={(v) => setTabFilter(v as number | 'all')}
+            options={tabOptions}
+            popupMatchSelectWidth={false}
+          />
+        ) : null}
       </Space>
+
+      <Text type="secondary" style={{ display: 'block', fontSize: 11, marginTop: -4 }}>
+        「单Tab」= debugger 录制（含响应体）；「全局」= webRequest 跨 Tab（无响应体，最近 10 秒可预录）。
+      </Text>
 
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
         <Table<RecordingEntry>
@@ -300,7 +372,13 @@ export function NetRecordTool() {
           locale={{
             emptyText: (
               <Empty
-                description={recording ? '暂无接口，在页面上操作一下触发请求' : '未开始录制，或历史已被清空'}
+                description={
+                  recording
+                    ? '暂无接口，在页面上操作一下触发请求'
+                    : webReqOn
+                      ? '未开始录制；全局监听正在缓冲，点开始后并入最近 10 秒'
+                      : '未开始录制，或历史已被清空'
+                }
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
               />
             ),
@@ -321,6 +399,11 @@ export function NetRecordTool() {
                 {detail.method}
               </Tag>
               <Tag color={statusColor(detail.status)}>状态 {detail.status || '-'}</Tag>
+              <Tag color={detail.source === 'webRequest' ? 'geekblue' : 'default'}>
+                {detail.source === 'webRequest' ? '全局 webRequest' : '单 Tab debugger'}
+              </Tag>
+              {detail.tabId != null && <Tag>Tab #{detail.tabId}</Tag>}
+              {detail.prebuffer && <Tag>预录</Tag>}
               <Text type="secondary" style={{ fontSize: 12 }}>{formatTime(detail.ts)}</Text>
               <Text type="secondary" style={{ fontSize: 12 }}>{detail.durationMs}ms</Text>
             </Space>
@@ -349,6 +432,14 @@ export function NetRecordTool() {
               {detail.errorText && <Tag color="error">{detail.errorText}</Tag>}
             </Space>
 
+            {detail.source === 'webRequest' ? (
+              <Alert
+                type="info"
+                showIcon
+                message="该条来自全局 webRequest 监听：保留 URL、请求体、请求/响应头与状态；不提供响应体。"
+              />
+            ) : null}
+
             <DetailBlock
               title="请求头"
               text={JSON.stringify(detail.requestHeaders, null, 2)}
@@ -366,9 +457,13 @@ export function NetRecordTool() {
               onCopy={() => void copyText(JSON.stringify(detail.responseHeaders, null, 2), '响应头已复制')}
             />
             <DetailBlock
-              title="响应体"
-              text={prettyMaybe(detail.responseBody) || '(空)'}
-              disabled={!detail.responseBody}
+              title={detail.source === 'webRequest' ? '响应体（webRequest 不提供）' : '响应体'}
+              text={
+                detail.source === 'webRequest'
+                  ? '(全局 webRequest 模式不采集响应体)'
+                  : (prettyMaybe(detail.responseBody) || '(空)')
+              }
+              disabled={detail.source === 'webRequest' || !detail.responseBody}
               onCopy={() => void copyText(detail.responseBody, '响应体已复制')}
             />
           </Space>

@@ -20,6 +20,10 @@ export interface DebuggerState {
   wsConnections: Record<string, string>;
   /** 已录制条目数（便于 UI 展示，无需拉全量） */
   recordingCount: number;
+  /** 全局 webRequest 监听是否开启（跨 Tab，无响应体） */
+  webRequestMonitoring: boolean;
+  /** 当前环境是否支持 chrome.webRequest（运行时能力，不持久化） */
+  webRequestSupported: boolean;
 }
 
 export type ThrottlePresetId = 'off' | 'slow3g' | 'fast3g' | 'weak' | 'latency' | 'custom';
@@ -64,6 +68,9 @@ export interface WsEvent {
 
 // ---------- runtime 消息定义 ----------
 
+/** 录制来源：debugger 单 Tab（有响应体）/ webRequest 全局（无响应体） */
+export type RecordingSource = 'debugger' | 'webRequest';
+
 /** 单条接口录制（跨页面跳转仍保留；body 超限会截断） */
 export interface RecordingEntry {
   id: number;
@@ -90,6 +97,12 @@ export interface RecordingEntry {
   responseTruncated: boolean;
   /** 加载失败时的错误文案 */
   errorText?: string;
+  /** 来源；旧数据没有该字段时按 debugger 处理 */
+  source?: RecordingSource;
+  /** 所属标签页 id；webRequest 条目必有，debugger 条目尽量填 */
+  tabId?: number;
+  /** 是否来自开始录制前的滚动缓冲 */
+  prebuffer?: boolean;
 }
 
 /** UI → SW 请求 */
@@ -106,7 +119,8 @@ export type DebugRequest =
   | { type: 'dbg/recStart' }
   | { type: 'dbg/recStop' }
   | { type: 'dbg/recList' }
-  | { type: 'dbg/recClear' };
+  | { type: 'dbg/recClear' }
+  | { type: 'dbg/webReqSet'; enabled: boolean };
 
 /** SW → UI 统一响应 */
 export interface DebugResponse {
@@ -135,3 +149,8 @@ export const REC_BODY_LIMIT = 64 * 1024;
 export const REC_ENTRY_LIMIT = 300;
 /** storage 中接口录制条目的 key */
 export const KEY_RECORDING_ENTRIES = 'debugger.recordingEntries';
+
+/** webRequest 全局监听的滚动缓冲时长（毫秒） */
+export const WEBREQ_BUFFER_MS = 10_000;
+/** webRequest 全局监听滚动缓冲最多保留条数 */
+export const WEBREQ_BUFFER_LIMIT = 300;

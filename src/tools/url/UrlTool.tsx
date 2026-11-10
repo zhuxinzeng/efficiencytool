@@ -10,7 +10,8 @@ type Scope = 'component' | 'uri';
 
 export function UrlTool() {
   const [input, setInput] = useState('');
-  const [mode, setMode] = useState<Mode>('encode');
+  // 默认进入解码模式（日常使用最多的是把编码后的 URL 还原）
+  const [mode, setMode] = useState<Mode>('decode');
   const [scope, setScope] = useState<Scope>('component');
 
   const result = useMemo(() => {
@@ -59,11 +60,15 @@ export function UrlTool() {
         </Space>
 
         <Input.TextArea
+          className="url-input"
           placeholder={mode === 'encode' ? '输入待编码的 URL 或文本' : '输入待解码的 URL 编码文本'}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          autoSize={{ minRows: 3, maxRows: 6 }}
+          rows={4}
           allowClear
+          // rc-textarea：resize 需挂在 style 上才会传到内部 textarea；不能用 autoSize（会强制 resize:none）
+          style={{ resize: 'vertical', minHeight: 96 }}
+          styles={{ textarea: { minHeight: 96, resize: 'vertical' } }}
         />
 
         {result.ok ? (

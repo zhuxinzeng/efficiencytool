@@ -24,7 +24,7 @@
 | 工具 | 说明 |
 |------|------|
 | CORS 绕过 | 本地调试时按 URL 规则注入 `Access-Control-Allow-*`（**仅限本地，用完请关**） |
-| 接口录制 | 录制当前 Tab 的 XHR / Fetch / Document（含 301/302 重定向链），跨站跳转后记录仍保留，可筛选导出 |
+| 接口录制 | 单 Tab 用 `chrome.debugger` 录制 XHR / Fetch / Document（含 301/302 重定向链、响应体）；全局用 `chrome.webRequest` 跨 Tab/新开 Tab 捕获初始化请求（路径、参数、状态，无响应体，保留最近 10 秒缓冲）；可筛选、复制、导出 JSON |
 | 框架状态 | 探测当前页 **Pinia / Vuex / Redux** 状态树；Pinia、Vuex 支持简单字段写入；Redux 默认只读 |
 
 ### DevTools 面板

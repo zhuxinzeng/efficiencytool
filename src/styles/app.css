@@ -106,6 +106,22 @@ textarea.json-input {
   min-height: 280px !important;
 }
 
+/* URL 编解码输入：右下角可纵向拉伸 */
+.url-input textarea,
+.url-input.ant-input,
+textarea.url-input {
+  resize: vertical !important;
+  min-height: 96px !important;
+}
+
+/* 编码全家桶输入：同样支持纵向拉伸 */
+.codec-input textarea,
+.codec-input.ant-input,
+textarea.codec-input {
+  resize: vertical !important;
+  min-height: 96px !important;
+}
+
 /* 结果输出区：等宽字体、保留换行、可滚动 */
 .result-pre {
   margin: 0;

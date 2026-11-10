@@ -5,6 +5,7 @@ import {
   getMockRules, type MockRule,
 } from '../utils/dnr-rules';
 import { storageGet, storageSet } from '../shared/storage';
+import { initWebRequestRecorder, WEBREQ_SUPPORTED } from './webrequest';
 import {
   THROTTLE_PRESETS, WS_PAYLOAD_LIMIT,
   KEY_RECORDING_ENTRIES, REC_BODY_LIMIT, REC_ENTRY_LIMIT,
@@ -24,6 +25,8 @@ const OFFLINE: DebuggerState = {
   throttleCustom: { latency: 0, download: 0, upload: 0 },
   wsConnections: {},
   recordingCount: 0,
+  webRequestMonitoring: false,
+  webRequestSupported: WEBREQ_SUPPORTED,
 };
 
 /** 运行时状态（SW 内存；tabId/开关/限速持久化，wsConnections 仅内存） */
@@ -55,6 +58,7 @@ async function persist(): Promise<void> {
     throttlePreset: state.throttlePreset,
     throttleCustom: state.throttleCustom,
     recordingCount: state.recordingCount,
+    webRequestMonitoring: state.webRequestMonitoring,
   });
 }
 
@@ -103,7 +107,8 @@ async function maybeDetach(): Promise<void> {
   } catch {
     // 已被用户手动取消
   }
-  state = { ...OFFLINE };
+  const keepWebRequest = state.webRequestMonitoring;
+  state = { ...OFFLINE, webRequestMonitoring: keepWebRequest };
   await persist();
   pushState();
 }
@@ -281,6 +286,7 @@ async function onRequestPaused(params: {
 /** 进行中的请求（requestId → 草稿），loadingFinished / loadingFailed 时落盘 */
 interface PendingRec {
   ts: number;
+  tabId?: number;
   pageUrl: string;
   method: string;
   url: string;
@@ -334,7 +340,8 @@ async function loadRecEntries(): Promise<void> {
     return;
   }
   recHydratePromise = (async () => {
-    recEntries = await storageGet<RecordingEntry[]>(KEY_RECORDING_ENTRIES, []);
+    const stored = await storageGet<RecordingEntry[]>(KEY_RECORDING_ENTRIES, []);
+    recEntries = stored.sort((a, b) => b.ts - a.ts);
     recSeq = recEntries.reduce((m, e) => Math.max(m, e.id), 0);
     state.recordingCount = recEntries.length;
     recHydrated = true;
@@ -388,14 +395,16 @@ async function flushPendingRec(reason: string): Promise<void> {
 }
 
 function pushRecBatch(entries: RecordingEntry[]): void {
-  if (typeof chrome.runtime?.sendMessage !== 'function') return;
-  chrome.runtime.sendMessage({ type: 'dbg/recEntries', entries } satisfies DebugPush).catch(() => {
+  if (entries.length === 0 || typeof chrome.runtime?.sendMessage !== 'function') return;
+  // 同一 id 可能因 debugger 替换 webRequest 条目而同时出现在一批里；UI 只保留新值
+  const unique = [...new Map(entries.map((entry) => [entry.id, entry])).values()];
+  chrome.runtime.sendMessage({ type: 'dbg/recEntries', entries: unique } satisfies DebugPush).catch(() => {
     // 无 UI 接收时忽略
   });
 }
 
-function scheduleRecFlush(entry: RecordingEntry): void {
-  recDirty.push(entry);
+function scheduleRecFlush(entries: RecordingEntry[]): void {
+  recDirty.push(...entries);
   if (recFlushTimer == null) {
     recFlushTimer = setTimeout(() => {
       recFlushTimer = null;
@@ -406,6 +415,60 @@ function scheduleRecFlush(entry: RecordingEntry): void {
     }, 120);
   }
 }
+
+function sourceOf(entry: RecordingEntry): 'debugger' | 'webRequest' {
+  return entry.source ?? 'debugger';
+}
+
+/** 同一请求的跨来源判断：只用于 debugger/webRequest 去重，避免误合并两次相同调用 */
+function sameRequest(a: RecordingEntry, b: RecordingEntry): boolean {
+  if (sourceOf(a) === sourceOf(b)) return false;
+  if (a.tabId == null || b.tabId == null || a.tabId !== b.tabId) return false;
+  if (a.method !== b.method || a.url !== b.url) return false;
+  return Math.abs(a.ts - b.ts) <= 1500;
+}
+
+/**
+ * 合并条目：按时间倒序、上限截断；同一请求 debugger 优先（有响应体）。
+ * 复用 webRequest 条目的 id 时，UI 会按 id 替换旧行，不会留下两份。
+ */
+function insertRecEntries(entries: RecordingEntry[]): RecordingEntry[] {
+  if (entries.length === 0) return [];
+  const fresh: RecordingEntry[] = [];
+  for (const entry of entries) {
+    const duplicate = recEntries.find((x) => sameRequest(x, entry))
+      ?? fresh.find((x) => sameRequest(x, entry));
+    if (duplicate) {
+      if (sourceOf(entry) === 'debugger' && sourceOf(duplicate) === 'webRequest') {
+        entry.id = duplicate.id;
+        recEntries = recEntries.filter((x) => x !== duplicate);
+        const freshIndex = fresh.indexOf(duplicate);
+        if (freshIndex >= 0) fresh.splice(freshIndex, 1);
+        fresh.push(entry);
+      }
+      continue;
+    }
+    fresh.push(entry);
+  }
+  if (fresh.length === 0) return [];
+  recEntries = [...fresh, ...recEntries]
+    .sort((a, b) => b.ts - a.ts)
+    .slice(0, REC_ENTRY_LIMIT);
+  return fresh;
+}
+
+function addWebRequestEntries(entries: RecordingEntry[]): void {
+  const fresh = insertRecEntries(entries);
+  if (fresh.length > 0) scheduleRecFlush(fresh);
+}
+
+/** 全局 webRequest 引擎：跨 Tab 采集；debugger 当前 tab 优先（含响应体） */
+const webReq = initWebRequestRecorder({
+  isRecording: () => state.recording,
+  getDebuggerTabId: () => state.tabId,
+  addEntries: addWebRequestEntries,
+  truncateBody,
+});
 
 function finalizeRec(requestId: string, patch: Partial<RecordingEntry>): void {
   const pending = pendingRec.get(requestId);
@@ -431,10 +494,11 @@ function finalizeRec(requestId: string, patch: Partial<RecordingEntry>): void {
     responseBody: patch.responseBody ?? '',
     responseTruncated: patch.responseTruncated ?? false,
     errorText: patch.errorText,
+    source: 'debugger',
+    tabId: pending.tabId,
   };
-  // 新条目插到最前；超出上限丢弃最旧
-  recEntries = [entry, ...recEntries].slice(0, REC_ENTRY_LIMIT);
-  scheduleRecFlush(entry);
+  const fresh = insertRecEntries([entry]);
+  if (fresh.length > 0) scheduleRecFlush(fresh);
 }
 
 function redirectKey(requestId: string, url: string, status: number): string {
@@ -468,9 +532,11 @@ function emitRedirectEntry(
     responseHeaders,
     responseBody: nextUrl ? `(redirect → ${nextUrl})` : '(redirect)',
     responseTruncated: false,
+    source: 'debugger',
+    tabId: pending.tabId,
   };
-  recEntries = [entry, ...recEntries].slice(0, REC_ENTRY_LIMIT);
-  scheduleRecFlush(entry);
+  const fresh = insertRecEntries([entry]);
+  if (fresh.length > 0) scheduleRecFlush(fresh);
 }
 
 function onRecRequestWillBeSent(params: {
@@ -510,6 +576,7 @@ function onRecRequestWillBeSent(params: {
     // existing 可能为空：首跳若曾被旧逻辑过滤，仍用 redirectResponse 补一条 3xx
     const pendingForHop: PendingRec = existing ?? {
       ts: params.wallTime ? Math.round(params.wallTime * 1000) : Date.now(),
+      tabId: state.tabId ?? undefined,
       pageUrl: params.documentURL || '',
       method: (params.request.method || 'GET').toUpperCase(),
       url: prevUrl,
@@ -540,6 +607,7 @@ function onRecRequestWillBeSent(params: {
   const { body } = truncateBody(params.request.postData || '');
   pendingRec.set(params.requestId, {
     ts: params.wallTime ? Math.round(params.wallTime * 1000) : Date.now(),
+    tabId: state.tabId ?? undefined,
     pageUrl: params.documentURL || existing?.pageUrl || '',
     method: (params.request.method || existing?.method || 'GET').toUpperCase(),
     url: params.request.url || '',
@@ -747,10 +815,11 @@ if (hasDebugger) {
       const tabId = source.tabId;
       const userCanceled = reason === 'canceled_by_user';
       const keepRecording = !userCanceled && (recWanted || state.recording);
+      const keepWebReq = state.webRequestMonitoring;
       await flushPendingRec('navigated');
       if (!keepRecording) {
         recWanted = false;
-        state = { ...OFFLINE, recordingCount: recEntries.length };
+        state = { ...OFFLINE, webRequestMonitoring: keepWebReq, recordingCount: recEntries.length };
         await persist();
         pushState();
         return;
@@ -768,7 +837,13 @@ if (hasDebugger) {
       recReattachTimer = setTimeout(() => {
         recReattachTimer = null;
         if (!recWanted || tabId == null) return;
-        void reattachRecording(tabId);
+        void reattachRecording(tabId).then((ok) => {
+          if (ok) return;
+          // 标签页已关闭 / 无法重挂：清掉旧 tabId，允许之后在别的 tab 重新开始
+          state = { ...state, tabId: null, recording: false, recordingCount: recEntries.length };
+          void persist();
+          pushState();
+        });
       }, 250);
     })();
   });
@@ -867,6 +942,8 @@ async function handle(msg: DebugRequest): Promise<DebugResponse> {
       await ensureAttached();
       await enableRecording();
       state.recording = true;
+      // 把全局监听的滚动缓冲并入：开始得晚也能看到新 tab 的首屏请求
+      webReq.flushBuffer();
       await persist();
       pushState();
       return { ok: true, state };
@@ -890,11 +967,21 @@ async function handle(msg: DebugRequest): Promise<DebugResponse> {
       recHydrated = true;
       pendingRec.clear();
       recSeq = 0;
+      webReq.clearBuffer();
       state.recordingCount = 0;
       await storageSet(KEY_RECORDING_ENTRIES, []);
       await persist();
       pushState();
       return { ok: true, state, entries: [] };
+
+    case 'dbg/webReqSet': {
+      const enabled = !!msg.enabled && WEBREQ_SUPPORTED;
+      state.webRequestMonitoring = enabled;
+      webReq.setEnabled(enabled);
+      await persist();
+      pushState();
+      return { ok: true, state };
+    }
 
     default:
       return { ok: false, error: '未知消息' };
@@ -917,10 +1004,18 @@ void (async () => {
   if (!hasDebugger) return;
   await loadRecEntries();
   const saved = await storageGet<Partial<DebuggerState>>(KEY_STATE, {});
+  const webReqOn = WEBREQ_SUPPORTED && (saved.webRequestMonitoring ?? true);
+  state.webRequestMonitoring = webReqOn;
+  webReq.setEnabled(webReqOn);
+  if (saved.webRequestMonitoring == null) await persist();
+
   const tabId = typeof saved.tabId === 'number' ? saved.tabId : null;
   const preset = (saved.throttlePreset ?? 'off') as ThrottlePresetId;
   const needAttach = !!saved.wsMonitoring || !!saved.advMockActive || !!saved.recording || preset !== 'off';
-  if (tabId == null || !needAttach) return;
+  if (tabId == null || !needAttach) {
+    pushState();
+    return;
+  }
   state = {
     ...OFFLINE,
     tabId,
@@ -930,6 +1025,7 @@ void (async () => {
     throttlePreset: preset,
     throttleCustom: saved.throttleCustom ?? OFFLINE.throttleCustom,
     recordingCount: recEntries.length,
+    webRequestMonitoring: webReqOn,
   };
   recWanted = !!saved.recording;
   try {
@@ -944,7 +1040,8 @@ void (async () => {
       }).catch(() => undefined);
     }
   } catch {
-    state = { ...OFFLINE, recordingCount: recEntries.length };
+    const keepWebReq = state.webRequestMonitoring;
+    state = { ...OFFLINE, webRequestMonitoring: keepWebReq, recordingCount: recEntries.length };
     await persist();
     pushState();
   }

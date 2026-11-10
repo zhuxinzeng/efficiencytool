@@ -19,6 +19,8 @@ export const OFFLINE_STATE: DebuggerState = {
   throttleCustom: { latency: 0, download: 0, upload: 0 },
   wsConnections: {},
   recordingCount: 0,
+  webRequestMonitoring: false,
+  webRequestSupported: false,
 };
 
 const hasRuntime =
@@ -107,6 +109,11 @@ export async function recList(): Promise<RecordingEntry[]> {
 
 export function recClear(): Promise<DebugResponse> {
   return send({ type: 'dbg/recClear' });
+}
+
+/** 开关全局 webRequest 监听（跨 Tab，无响应体；保留最近 10 秒滚动缓冲） */
+export function setWebRequestMonitoring(enabled: boolean): Promise<DebugResponse> {
+  return send({ type: 'dbg/webReqSet', enabled });
 }
 
 /**

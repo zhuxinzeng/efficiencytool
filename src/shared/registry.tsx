@@ -1,13 +1,19 @@
 // 工具注册表：popup 与全屏页共享的唯一导航源（按分组组织）
 import type { ComponentType, ReactNode } from 'react';
 import {
-  BankOutlined, ClockCircleOutlined, CodeOutlined, ClusterOutlined, DatabaseOutlined,
-  DashboardOutlined, GlobalOutlined, LinkOutlined,
+  BankOutlined, BgColorsOutlined, ClockCircleOutlined, ClusterOutlined, CodeOutlined, DatabaseOutlined,
+  DashboardOutlined, ExperimentOutlined, FileMarkdownOutlined, FontSizeOutlined, GlobalOutlined,
+  LinkOutlined, SwapOutlined,
 } from '@ant-design/icons';
 import { CompanyTool } from '../tools/company/CompanyTool';
 import { UrlTool } from '../tools/url/UrlTool';
 import { TimestampTool } from '../tools/timestamp/TimestampTool';
 import { JsonTool } from '../tools/json/JsonTool';
+import { CodecTool } from '../tools/codec/CodecTool';
+import { MockTool } from '../tools/mock/MockTool';
+import { ColorTool } from '../tools/color/ColorTool';
+import { AuditTool } from '../tools/audit/AuditTool';
+import { ConvertTool } from '../tools/convert/ConvertTool';
 import { CorsTool } from '../tools/cors/CorsTool';
 import { NetRecordTool } from '../tools/netrecord/NetRecordTool';
 import { FrameStoreTool } from '../tools/framestore/FrameStoreTool';
@@ -37,10 +43,12 @@ export const TOOL_GROUPS: ToolGroup[] = [
     id: 'basic',
     title: '基础工具',
     tools: [
-      { id: 'company', title: '企业信息', subtitle: '名称与统一社会信用代码', icon: <BankOutlined />, component: CompanyTool, tags: ['GB 32100-2015 统一社会信用代码', 'GB 11714 组织机构代码', 'GB 11643 居民身份证', 'Manifest V3'] },
       { id: 'url', title: 'URL 编解码', subtitle: 'encode / decode', icon: <LinkOutlined />, component: UrlTool },
+      { id: 'company', title: '企业信息', subtitle: '名称与统一社会信用代码', icon: <BankOutlined />, component: CompanyTool, tags: ['GB 32100-2015 统一社会信用代码', 'GB 11714 组织机构代码', 'GB 11643 居民身份证', 'Manifest V3'] },
       { id: 'timestamp', title: '时间戳转换', subtitle: '时间戳与时间互转', icon: <ClockCircleOutlined />, component: TimestampTool },
       { id: 'json', title: 'JSON 工具', subtitle: '格式化 / 压缩 / 校验', icon: <CodeOutlined />, component: JsonTool },
+      { id: 'codec', title: '编码全家桶', subtitle: 'Base64 / Hex / Unicode / 实体', icon: <SwapOutlined />, component: CodecTool },
+      { id: 'mock', title: 'Mock 数据', subtitle: '批量造测试数据 · 导出 CSV', icon: <ExperimentOutlined />, component: MockTool, wide: true, tags: ['GB 11643 身份证校验位', 'GB 32100 信用代码校验位', 'Luhn 银行卡校验', '纯本地生成'] },
     ],
   },
   {
@@ -49,8 +57,23 @@ export const TOOL_GROUPS: ToolGroup[] = [
     tools: [
       { id: 'perf', title: '性能分析', subtitle: '当前页 CWV / 资源 / 优化建议', icon: <DashboardOutlined />, component: PerfTool, wide: true },
       { id: 'cors', title: 'CORS 绕过', subtitle: '一键注入跨域响应头', icon: <GlobalOutlined />, component: CorsTool },
-      { id: 'netrecord', title: '接口录制', subtitle: '保存当前 Tab 请求与响应', icon: <DatabaseOutlined />, component: NetRecordTool, wide: true },
+      { id: 'netrecord', title: '接口录制', subtitle: '单 Tab 响应体 + 跨 Tab 接口监听', icon: <DatabaseOutlined />, component: NetRecordTool, wide: true },
       { id: 'framestore', title: '框架状态', subtitle: 'Pinia / Vuex / Redux 探测编辑', icon: <ClusterOutlined />, component: FrameStoreTool, wide: true },
+    ],
+  },
+  {
+    id: 'design',
+    title: '设计与视觉',
+    tools: [
+      { id: 'color', title: '取色与配色', subtitle: '屏幕取色 · 格式转换 · 对比度', icon: <BgColorsOutlined />, component: ColorTool, tags: ['WCAG 2.1 对比度', 'OKLCH', 'EyeDropper API'] },
+      { id: 'audit', title: '字体与颜色审计', subtitle: '当前页字体 / 颜色 / CSS 变量', icon: <FontSizeOutlined />, component: AuditTool, wide: true },
+    ],
+  },
+  {
+    id: 'file',
+    title: '文件与格式',
+    tools: [
+      { id: 'convert', title: '文件转 Markdown', subtitle: 'Word / PDF / HTML / CSV → .md', icon: <FileMarkdownOutlined />, component: ConvertTool, wide: true, tags: ['纯本地解析', 'mammoth', 'pdfjs', 'turndown'] },
     ],
   },
 ];
